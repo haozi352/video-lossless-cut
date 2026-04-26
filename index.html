@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>无损视频剪辑工具</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#f5f5f7;padding:16px;font-family:system-ui, -apple-system;}
+.box{background:#fff;border-radius:16px;padding:20px;margin-bottom:16px;box-shadow:0 2px 10px #00000008;}
+h3{margin-bottom:12px;color:#1d1d1f;font-size:17px;}
+input{width:100%;padding:12px;margin:6px 0;border:1px solid #e5e5e7;border-radius:10px;font-size:15px;}
+button{padding:11px 14px;border:none;border-radius:10px;background:#007aff;color:#fff;margin:6px 0;font-size:15px;}
+.delBtn{background:#ff3b30;}
+.mergeBtn{background:#34c759;}
+.videoWrap{margin-top:12px;}
+video{width:100%;border-radius:12px;background:#000;}
+.item{border:1px solid #e5e5e7;padding:14px;border-radius:12px;margin:10px 0;}
+.tip{color:#666;font-size:14px;margin-top:8px;}
+</style>
+</head>
+<body>
+
+<div class="box">
+  <h3>1. 选择原视频</h3>
+  <input type="file" id="vidFile" accept="video/mp4,video/mov">
+  <div class="tip">支持 MP4 / MOV，纯本地处理不上传</div>
+</div>
+
+<div class="box">
+  <h3>2. 添加截取片段<br><span style="font-size:13px;color:#999">支持格式：12 ｜ 00:00:12</span></h3>
+  <div id="listBox"></div>
+  <button onclick="addItem()">+ 新增片段区间</button>
+</div>
+
+<div class="box">
+  <h3>3. 批量处理</h3>
+  <button onclick="cutAll()">🔪 批量无损截取</button>
+  <button class="mergeBtn" onclick="mergeAll()">🔗 合并所有片段</button>
+</div>
+
+<div class="box">
+  <h3>4. 视频预览 & 下载</h3>
+  <div class="videoWrap">
+    <video id="finalVid" controls playsinline></video>
+  </div>
+  <div id="tip" class="tip">就绪</div>
+</div>
+
+<script type="module">
+import { FFmpeg } from 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.7/dist/ffmpeg.min.js';
+import { fetchFile } from 'https://unpkg.com/@ffmpeg/util@0.12.1/dist/util.min.js';
+
+const ffmpeg = new FFmpeg();
+let originFile = null;
+let clipList = [];
+let itemIndex = 0;
+
+await ffmpeg.load({
+  coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js',
+  wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/ffmpeg-core.wasm'
+});
+
+ffmpeg.on('log', ({ message }) => {
+  document.getElementById('tip').innerText = '运行中：' + message;
+});
+
+function timeToSec(timeStr) {
+  if(!timeStr.includes(':')) return parseFloat(timeStr) || 0;
+  const [h, m, s] = timeStr.split(':').map(Number);
+  return h * 3600 + m * 60 + s;
+}
+
+document.getElementById('vidFile').onchange = async e => {
+  originFile = e.target.files[0];
+  document.getElementById('tip').innerText = '已载入：' + originFile.name;
+};
+
+window.addItem = function(){
+  const div = document.createElement("div");
+  div.className = "item";
+  div.innerHTML = `
+    <div style="margin-bottom:6px;font-weight:500">片段${itemIndex+1}</div>
+    <input type="text" class="s" placeholder="开始 例：00:00:05 或 5">
+    <input type="text" class="e" placeholder="结束 例：00:00:25 或 25">
+    <button class="delBtn" onclick="this.parentElement.remove()">删除片段</button>
+  `;
+  document.getElementById('listBox').appendChild(div);
+  itemIndex++;
+};
+
+window.cutAll = async function(){
+  if(!originFile) return alert("请先选择原视频");
+  const items = document.querySelectorAll(".item");
+  if(items.length === 0) return alert("请先添加截取片段");
+
+  document.getElementById('tip').innerText = "正在无损截取片段...";
+  await ffmpeg.writeFile("src.mp4", await fetchFile(originFile));
+  clipList = [];
+
+  for(let i = 0; i < items.length; i++){
+    const sRaw = items[i].querySelector(".s").value.trim();
+    const eRaw = items[i].querySelector(".e").value.trim();
+    const s = timeToSec(sRaw);
+    const e = timeToSec(eRaw);
+    if(!s || !e || s >= e) continue;
+
+    const outName = `clip${i}.mp4`;
+    await ffmpeg.exec([
+      "-i", "src.mp4",
+      "-ss", String(s),
+      "-to", String(e),
+      "-c", "copy",
+      "-y", outName
+    ]);
+    clipList.push(outName);
+  }
+  document.getElementById('tip').innerText = `✅ 截取完成，共${clipList.length}个片段，可合并`;
+};
+
+window.mergeAll = async function(){
+  if(clipList.length === 0) return alert("请先完成片段截取");
+
+  document.getElementById('tip').innerText = "正在无损合并视频...";
+  let listText = "";
+  clipList.forEach(name => listText += `file '${name}'\n`);
+  await ffmpeg.writeFile("concat_list.txt", listText);
+
+  await ffmpeg.exec([
+    "-f", "concat",
+    "-safe", "0",
+    "-i", "concat_list.txt",
+    "-c", "copy",
+    "-y", "final_out.mp4"
+  ]);
+
+  const data = await ffmpeg.readFile("final_out.mp4");
+  const blob = new Blob([data], { type: "video/mp4" });
+  const url = URL.createObjectURL(blob);
+  document.getElementById('finalVid').src = url;
+  document.getElementById('tip').innerText = "🎉 合并完成，下方直接播放预览";
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "多段合并成品.mp4";
+};
+
+addItem();
+</script>
+</body>
+</html>
