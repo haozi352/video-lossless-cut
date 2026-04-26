@@ -48,18 +48,19 @@ video{width:100%;border-radius:12px;background:#000;}
 </div>
 
 <script type="module">
-import { FFmpeg } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/dist/ffmpeg.min.js';
-import { fetchFile } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/util.min.js';
+// 替换为国内可访问的 CDN 源
+import { FFmpeg } from 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.7/dist/ffmpeg.min.js';
+import { fetchFile } from 'https://unpkg.com/@ffmpeg/util@0.12.1/dist/util.min.js';
 
 const ffmpeg = new FFmpeg();
 let originFile = null;
 let clipList = [];
 let itemIndex = 0;
 
-// 加载内核
+// 用国内 CDN 加载内核
 await ffmpeg.load({
-  coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js',
-  wasmURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.wasm'
+  coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js',
+  wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/ffmpeg-core.wasm'
 });
 
 document.getElementById('tip').innerText = "✅ 内核加载完成，可以使用了！";
