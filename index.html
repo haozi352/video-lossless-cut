@@ -44,38 +44,52 @@ video{width:100%;border-radius:12px;background:#000;}
   <div class="videoWrap">
     <video id="finalVid" controls playsinline></video>
   </div>
-  <div id="tip" class="tip">就绪</div>
+  <div id="tip" class="tip">正在加载内核，请稍等...</div>
 </div>
 
 <script type="module">
-import { FFmpeg } from 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.7/dist/ffmpeg.min.js';
-import { fetchFile } from 'https://unpkg.com/@ffmpeg/util@0.12.1/dist/util.min.js';
+import { FFmpeg } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/dist/ffmpeg.min.js';
+import { fetchFile } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/util.min.js';
 
 const ffmpeg = new FFmpeg();
 let originFile = null;
 let clipList = [];
 let itemIndex = 0;
 
+// 加载内核
 await ffmpeg.load({
-  coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js',
-  wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/ffmpeg-core.wasm'
+  coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js',
+  wasmURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/ffmpeg-core.wasm'
 });
+
+document.getElementById('tip').innerText = "✅ 内核加载完成，可以使用了！";
 
 ffmpeg.on('log', ({ message }) => {
   document.getElementById('tip').innerText = '运行中：' + message;
 });
 
+// 时间转秒
 function timeToSec(timeStr) {
+  if(!timeStr || timeStr.trim() === "") return 0;
   if(!timeStr.includes(':')) return parseFloat(timeStr) || 0;
-  const [h, m, s] = timeStr.split(':').map(Number);
-  return h * 3600 + m * 60 + s;
+  const parts = timeStr.split(':').map(Number);
+  if (parts.length === 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  } else if (parts.length === 2) {
+    return parts[0] * 60 + parts[1];
+  }
+  return parseFloat(timeStr) || 0;
 }
 
+// 视频选择
 document.getElementById('vidFile').onchange = async e => {
   originFile = e.target.files[0];
-  document.getElementById('tip').innerText = '已载入：' + originFile.name;
+  if (originFile) {
+    document.getElementById('tip').innerText = '已载入视频：' + originFile.name;
+  }
 };
 
+// 添加片段
 window.addItem = function(){
   const div = document.createElement("div");
   div.className = "item";
@@ -89,21 +103,26 @@ window.addItem = function(){
   itemIndex++;
 };
 
+// 批量截取
 window.cutAll = async function(){
   if(!originFile) return alert("请先选择原视频");
   const items = document.querySelectorAll(".item");
   if(items.length === 0) return alert("请先添加截取片段");
 
-  document.getElementById('tip').innerText = "正在无损截取片段...";
-  await ffmpeg.writeFile("src.mp4", await fetchFile(originFile));
   clipList = [];
+  document.getElementById('tip').innerText = "开始批量截取...";
+
+  await ffmpeg.writeFile("src.mp4", await fetchFile(originFile));
 
   for(let i = 0; i < items.length; i++){
-    const sRaw = items[i].querySelector(".s").value.trim();
-    const eRaw = items[i].querySelector(".e").value.trim();
-    const s = timeToSec(sRaw);
-    const e = timeToSec(eRaw);
-    if(!s || !e || s >= e) continue;
+    const sStr = items[i].querySelector(".s").value.trim();
+    const eStr = items[i].querySelector(".e").value.trim();
+    const s = timeToSec(sStr);
+    const e = timeToSec(eStr);
+    if(s >= e) {
+      alert(`片段${i+1}的开始时间不能大于结束时间`);
+      continue;
+    }
 
     const outName = `clip${i}.mp4`;
     await ffmpeg.exec([
@@ -115,13 +134,16 @@ window.cutAll = async function(){
     ]);
     clipList.push(outName);
   }
-  document.getElementById('tip').innerText = `✅ 截取完成，共${clipList.length}个片段，可合并`;
+
+  document.getElementById('tip').innerText = `✅ 截取完成，共${clipList.length}个片段，可点击合并`;
 };
 
+// 合并片段
 window.mergeAll = async function(){
-  if(clipList.length === 0) return alert("请先完成片段截取");
+  if(clipList.length === 0) return alert("请先完成批量截取");
 
-  document.getElementById('tip').innerText = "正在无损合并视频...";
+  document.getElementById('tip').innerText = "正在合并片段...";
+
   let listText = "";
   clipList.forEach(name => listText += `file '${name}'\n`);
   await ffmpeg.writeFile("concat_list.txt", listText);
@@ -138,14 +160,15 @@ window.mergeAll = async function(){
   const blob = new Blob([data], { type: "video/mp4" });
   const url = URL.createObjectURL(blob);
   document.getElementById('finalVid').src = url;
-  document.getElementById('tip').innerText = "🎉 合并完成，下方直接播放预览";
+  document.getElementById('tip').innerText = "🎉 合并完成，下方可预览，视频会自动下载";
 
   const a = document.createElement("a");
   a.href = url;
-  a.download = "多段合并成品.mp4";
+  a.download = "无损剪辑成品.mp4";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 };
-
-addItem();
 </script>
 </body>
 </html>
